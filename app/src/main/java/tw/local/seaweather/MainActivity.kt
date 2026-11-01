@@ -9,8 +9,6 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
-import android.text.StaticLayout
-import android.text.TextPaint
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
@@ -22,6 +20,8 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.File
+import java.io.IOException
 import java.time.OffsetDateTime
 import java.util.concurrent.Executors
 
@@ -29,10 +29,12 @@ private const val PREFS = "settings"
 private const val KEY_API = "api_key"
 private const val KEY_COAST = "coast"
 private const val KEY_HISTORY = "history"
-private const val SEA_TTL_MS = 30 * 60 * 1000L
+private const val COAST_TTL_MS = 30 * 60 * 1000L
 
-private data class CoastTown(val county: String, val name: String, val dataset: String, val tideId: String, val zone: String) {
-    val label get() = county + name
+private data class CoastTown(val county: String, val name: String, val dataset: String, val tideId: String, val point: String) {
+    /** Islands have a north and a south coastal point, listed as separate places. */
+    val place get() = if ('_' in point) "$name ${point.substringAfter('_').removeSuffix("沿海")}" else name
+    val label get() = county + place
 }
 
 class MainActivity : Activity() {
@@ -44,13 +46,13 @@ class MainActivity : Activity() {
 
     private val coastTowns: List<CoastTown> by lazy {
         assets.open("coast_towns.tsv").bufferedReader().readLines().map {
-            val (county, name, dataset, tideId, zone) = it.split('\t')
-            CoastTown(county, name, dataset, tideId, zone)
+            val (county, name, dataset, tideId, point) = it.split('\t')
+            CoastTown(county, name, dataset, tideId, point)
         }
     }
 
-    private var seaZones: Map<String, List<SeaDay>> = emptyMap()
-    private var seaZonesAt = 0L
+    private var coastPoints: Map<String, List<SeaSlot>> = emptyMap()
+    private var coastPointsAt = 0L
     /** Bumped per load so a slow response cannot overwrite a newer selection. */
     private var generation = 0
 
@@ -142,7 +144,7 @@ class MainActivity : Activity() {
     private fun openPicker() {
         val counties = coastTowns.map { it.county }.distinct()
         choose("選擇縣市", counties.map { it to it }) { county ->
-            val options = coastTowns.filter { it.county == county }.map { it.name to it.label }
+            val options = coastTowns.filter { it.county == county }.map { it.place to it.label }
             choose("選擇 $county 的沿海鄉鎮", options) { save(KEY_COAST, it) }
         }
     }
@@ -234,10 +236,11 @@ class MainActivity : Activity() {
         val client = CwaClient(key)
         val coast = coastTown()
         prefs.edit().putString(KEY_HISTORY, withVisit(history(), coast.label).joinToString("\n")).apply()
-        val zonesStale = force || seaZones.isEmpty() || System.currentTimeMillis() - seaZonesAt > SEA_TTL_MS
+        val coastStale = force || coastPoints.isEmpty() || System.currentTimeMillis() - coastPointsAt > COAST_TTL_MS
+        val known = coastPoints
         worker.execute {
             val render: () -> Unit = try {
-                val periods = client.township(coast.dataset, coast.name)
+                val forecast = client.township(coast.dataset, coast.name)
                 // Wind is the core of this view; waves and tide degrade to a note.
                 val notes = mutableListOf<String>()
                 val tide = try {
@@ -246,17 +249,21 @@ class MainActivity : Activity() {
                     notes += "潮汐載入失敗：${e.message}"
                     emptyList()
                 }
-                val zones = try {
-                    if (zonesStale) client.seaZones() else seaZones
+                val points = try {
+                    if (coastStale) fetchCoast(client, force) else known
                 } catch (e: ApiError) {
-                    notes += "海面預報載入失敗：${e.message}"
-                    seaZones
+                    notes += "沿海預報載入失敗：${e.message}"
+                    known
+                } catch (e: IOException) {
+                    notes += "沿海預報暫存失敗"
+                    known
                 }
-                val report = CoastReport(periods, tide, zones[coast.zone].orEmpty(), notes);
+                val slots = points[coast.point].orEmpty()
+                val report = CoastReport(withSea(forecast, slots), tide, slots.isNotEmpty(), notes);
                 {
-                    if (zones.isNotEmpty() && zonesStale) {
-                        seaZones = zones
-                        seaZonesAt = System.currentTimeMillis()
+                    if (coastStale && points !== known) {
+                        coastPoints = points
+                        coastPointsAt = System.currentTimeMillis()
                     }
                     showCoast(report, coast)
                 }
@@ -267,6 +274,13 @@ class MainActivity : Activity() {
             }
             runOnUiThread { if (current == generation && !isDestroyed) render() }
         }
+    }
+
+    /** Kept on disk as well, so reopening the app does not download 6 MB again. */
+    private fun fetchCoast(client: CwaClient, force: Boolean): Map<String, List<SeaSlot>> {
+        val file = File(cacheDir, "coast.json")
+        val fresh = !force && System.currentTimeMillis() - file.lastModified() < COAST_TTL_MS
+        return parseCoast(if (fresh) file.readText() else client.coast().also(file::writeText))
     }
 
     private fun showMessage(text: String) {
@@ -406,30 +420,19 @@ class MainActivity : Activity() {
                 addView(cell(windArrow(p.windDir), w, h).apply { setOnClickListener { toast(p.windDir) } })
             }
         }
-        val waves = periods.map { p ->
-            report.sea.firstOrNull { it.date == p.start.take(10) }
-        }
-        fun shortWave(sea: SeaDay) =
-            sea.wave.replace("公尺", "").replace("再轉", "→").replace("轉", "→").replace("至", "-")
-        val wavePaint = TextPaint(cell("", w, h).paint)
-        val waveHeight = waves.filterNotNull().maxOfOrNull { sea ->
-            val text = shortWave(sea)
-            StaticLayout.Builder.obtain(text, 0, text.length, wavePaint, w).build().height + dp(12)
-        }?.coerceAtLeast(h) ?: h
-        line("浪高 m", waveHeight) {
-            waves.forEach { sea ->
-                if (sea == null) {
-                    addView(cell("", w, waveHeight))
-                } else {
-                    val top = Regex("\\d+(\\.\\d+)?").findAll(sea.wave).maxOfOrNull { it.value.toFloat() } ?: 0f
-                    addView(
-                        cell(shortWave(sea), w, waveHeight, heat(waveHue, top / 6f)).apply {
-                            setOnClickListener { toast("${sea.wave}，${sea.waveType}（當日海區預報）") }
-                        },
-                    )
-                }
+        line("浪高 m", h) {
+            periods.forEach {
+                addView(cell(it.wave, w, h, heat(waveHue, (value(it.wave) ?: 0f) / 6f), bold = true))
             }
         }
+        line("浪週期 s", h) { periods.forEach { addView(cell(it.wavePeriod, w, h)) } }
+        line("浪向", h) { periods.forEach { addView(cell(it.waveDir, w, h)) } }
+        line("流速 m/s", h) {
+            periods.forEach {
+                addView(cell(it.currentSpeed, w, h, heat(waveHue, (value(it.currentSpeed) ?: 0f) / 1.5f)))
+            }
+        }
+        line("流向", h) { periods.forEach { addView(cell(it.currentDir, w, h)) } }
         val tideHeight = dp(112)
         val marks = report.tide.flatMap { it.events }.mapNotNull { e ->
             val cm = e.heightCm.toIntOrNull() ?: return@mapNotNull null
@@ -500,10 +503,11 @@ class MainActivity : Activity() {
         report.notes.forEach { content.addView(label(it, 13f, muted).apply { setPadding(0, dp(10), 0, 0) }) }
         content.addView(
             label(
-                "顏色越深數值越大；箭頭為風吹去的方向，點天氣、風向或浪高可看文字。\n" +
-                    "風與天氣：${town.label}鄉鎮預報（陸地，非海上）。\n" +
-                    "浪高：${town.zone}每日預報。風、天氣、浪只有未來幾天，之後留白；潮汐可往右滑到 30 天。\n" +
-                    "潮汐：${town.label}，波峰為滿潮、波谷為乾潮，標示時間與潮高；峰谷之間為平滑推算。\n資料來源：中央氣象署",
+                "顏色越深數值越大；箭頭為風吹去的方向，點天氣或風向可看文字。\n" +
+                    (if (report.hasSea) "風、浪、海流：${town.point.replace("_", " ")}預報（海上）。\n"
+                    else "風：${town.label}鄉鎮預報（陸地，非海上）；沿海預報暫時無資料。\n") +
+                    "天氣、氣溫、降雨、濕度：${town.name}鄉鎮預報（陸地）。預報只有未來幾天，之後留白；潮汐可往右滑到 30 天。\n" +
+                    "潮汐：${town.county}${town.name}，波峰為滿潮、波谷為乾潮，標示時間與潮高；峰谷之間為平滑推算。\n資料來源：中央氣象署",
                 12f,
                 muted,
             ).apply { setPadding(0, dp(12), 0, 0) },

@@ -31,13 +31,27 @@ class ParsersTest {
     }
 
     @Test
-    fun liveSeaZonesGiveDailyWaveByArea() {
-        val zones = parseSeaZones(fixture("seazone.json"))
-        assertEquals(setOf("彭佳嶼基隆海面", "花蓮沿海"), zones.keys)
-        val days = zones.getValue("花蓮沿海")
-        assertEquals(5, days.size)
-        assertEquals("2026-11-01", days[0].date)
-        assertTrue(days.all { it.wave.contains("公尺") && it.waveType.isNotEmpty() })
+    fun liveCoastGivesThreeHourlySeaStateByPoint() {
+        val points = parseCoast(fixture("coast.json"))
+        assertEquals(setOf("中正區沿海", "綠島鄉_北方沿海"), points.keys)
+        val slots = points.getValue("綠島鄉_北方沿海")
+        assertEquals(4, slots.size)
+        assertEquals(slots.sortedBy { it.time }, slots)
+        assertEquals("2026-11-01T18:00:00+08:00", slots[0].time)
+        assertTrue(slots.all { it.wave.toFloat() >= 0 && it.windDir.endsWith("風") && it.waveDir.isNotEmpty() })
+    }
+
+    @Test
+    fun seaValuesReplaceLandWindAndUnmatchedPeriodsGoBlank() {
+        val land = Period("2026-11-01T18:00:00+08:00", "2026-11-01T21:00:00+08:00", "晴", "", "", "", "", "", "9", "9", "偏北風")
+        val later = land.copy(start = "2026-11-01T21:00:00+08:00", end = "2026-11-02T00:00:00+08:00")
+        val slot = SeaSlot(land.start, "3", "2", "偏南風", "1.1", "偏東", "9.3", "0.3", "東南")
+        val merged = withSea(listOf(land, later), listOf(slot))
+        assertEquals("3", merged[0].windSpeed)
+        assertEquals("1.1", merged[0].wave)
+        assertEquals("", merged[1].windSpeed)
+        assertEquals("晴", merged[1].wx)
+        assertEquals(listOf(land), withSea(listOf(land), emptyList()))
     }
 
     @Test

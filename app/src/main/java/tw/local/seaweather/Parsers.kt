@@ -20,13 +20,28 @@ data class Period(
     val windSpeed: String,
     val beaufort: String,
     val windDir: String,
+    val wave: String = "",
+    val waveDir: String = "",
+    val wavePeriod: String = "",
+    val currentSpeed: String = "",
+    val currentDir: String = "",
 )
 
 data class TideEvent(val time: String, val tide: String, val heightCm: String)
 data class TideDay(val date: String, val lunar: String, val range: String, val events: List<TideEvent>)
 
-data class SeaDay(val date: String, val wave: String, val waveType: String)
-data class CoastReport(val periods: List<Period>, val tide: List<TideDay>, val sea: List<SeaDay>, val notes: List<String>)
+data class SeaSlot(
+    val time: String,
+    val windSpeed: String,
+    val beaufort: String,
+    val windDir: String,
+    val wave: String,
+    val waveDir: String,
+    val wavePeriod: String,
+    val currentSpeed: String,
+    val currentDir: String,
+)
+data class CoastReport(val periods: List<Period>, val tide: List<TideDay>, val hasSea: Boolean, val notes: List<String>)
 
 private const val SHAPE_ERROR = "資料格式與預期不符，請回報此資料集"
 
@@ -117,21 +132,50 @@ fun parseTownship(body: String): List<Period> {
     }.sortedBy { it.start }
 }
 
-/** F-A0012-001 forecasts per sea area and per day, keyed here by area name. */
-fun parseSeaZones(body: String): Map<String, List<SeaDay>> =
-    objectsWith(root(body), "LocationName").associate { zone ->
-        val elements = items(zone.ci("WeatherElement")).associateBy { it.text("ElementName") }
-        fun times(name: String) = items(elements[name]?.ci("Time"))
-        val types = times("浪型描述").associateBy { it.text("StartTime") }
-        zone.text("LocationName") to times("浪高描述").map { t ->
-            val start = t.text("StartTime")
-            SeaDay(
-                date = start.take(10),
-                wave = t.obj("ElementValue")?.text("WaveHeightDescription").orEmpty(),
-                waveType = types[start]?.obj("ElementValue")?.text("WaveTypeDescription").orEmpty(),
+/** F-D0047-095 is one file holding every coastal point, keyed here by point name. */
+fun parseCoast(body: String): Map<String, List<SeaSlot>> =
+    objectsWith(root(body), "LocationName").associate { point ->
+        val elements = items(point.ci("WeatherElement")).associate { e ->
+            e.text("ElementName") to items(e.ci("Time")).associateBy { it.text("DataTime") }
+        }
+        fun value(element: String, field: String, time: String) =
+            elements[element]?.get(time)?.obj("ElementValue")?.text(field).orEmpty().takeIf(::usable).orEmpty()
+        point.text("LocationName") to elements["浪高"].orEmpty().keys.sorted().map { t ->
+            SeaSlot(
+                time = t,
+                windSpeed = value("風速", "WindSpeed", t),
+                beaufort = value("風速", "BeaufortScale", t),
+                windDir = value("風向", "WindDirection", t),
+                wave = value("浪高", "WaveHeight", t),
+                waveDir = value("浪向", "WaveDirection", t),
+                wavePeriod = value("浪週期", "WavePeriod", t),
+                currentSpeed = value("流速", "OceanCurrentSpeed", t),
+                currentDir = value("流向", "OceanCurrentDirection", t),
             )
         }
     }
+
+/**
+ * Sea wind replaces the township's land wind. A period the coastal file does not
+ * reach goes blank rather than showing land wind in a row labelled as sea wind.
+ */
+fun withSea(periods: List<Period>, slots: List<SeaSlot>): List<Period> {
+    if (slots.isEmpty()) return periods
+    val byTime = slots.associateBy { it.time }
+    return periods.map { p ->
+        val slot = byTime[p.start] ?: return@map p.copy(windSpeed = "", beaufort = "", windDir = "")
+        p.copy(
+            windSpeed = slot.windSpeed,
+            beaufort = slot.beaufort,
+            windDir = slot.windDir,
+            wave = slot.wave,
+            waveDir = slot.waveDir,
+            wavePeriod = slot.wavePeriod,
+            currentSpeed = slot.currentSpeed,
+            currentDir = slot.currentDir,
+        )
+    }
+}
 
 /**
  * Forecasts stop after a few days but tide runs for a month, so the time axis

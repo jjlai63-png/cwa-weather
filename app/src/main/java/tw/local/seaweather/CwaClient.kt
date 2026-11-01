@@ -36,11 +36,10 @@ class CwaClient(private val apiKey: String) {
         )
     }
 
-    fun seaZones(): Map<String, List<SeaDay>> {
+    /** About 6 MB for all of Taiwan, so callers keep the body instead of refetching per town. */
+    fun coast(): String {
         val key = URLEncoder.encode(apiKey, "UTF-8")
-        return parseSeaZones(
-            read(URL("https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-A0012-001?Authorization=$key&downloadType=WEB&format=JSON")),
-        )
+        return read(URL("https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-D0047-095?Authorization=$key&downloadType=WEB&format=JSON"))
     }
 
     private fun get(dataset: String, params: Map<String, String>): String {
