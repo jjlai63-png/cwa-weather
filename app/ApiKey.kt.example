@@ -1,0 +1,7 @@
+package tw.local.seaweather
+
+/**
+ * Personal CWA key, compiled into the APK. Excluded from git by .gitignore.
+ * A key saved through the app's 授權碼 dialog takes priority over this value.
+ */
+const val BUILT_IN_API_KEY = ""
