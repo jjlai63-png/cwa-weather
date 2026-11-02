@@ -8,6 +8,7 @@ never written to data.json; error text must never include a request URL, which c
   python3 web/snapshot.py --sample   Keelung only, from the captured test fixtures
 """
 import datetime
+import http.client
 import json
 import os
 import sys
@@ -28,6 +29,10 @@ SHAPE_ERROR = "資料格式與預期不符，請回報此資料集"
 
 class ApiError(Exception):
     pass
+
+
+class TransientError(Exception):
+    """A failure worth retrying; read() turns it into ApiError once retries run out."""
 
 
 def ci(obj, name):
@@ -185,7 +190,7 @@ def place_entry(periods, tide, slots, notes):
     }
 
 
-def read(url):
+def read_once(url):
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             return response.read().decode("utf-8")
@@ -194,9 +199,23 @@ def read(url):
             raise ApiError("授權碼不正確")
         if e.code == 429:
             raise ApiError("查詢次數已達上限，請稍後再試")
+        if e.code >= 500:
+            raise TransientError("氣象署伺服器回應異常（%d）" % e.code)
         raise ApiError("氣象署伺服器回應異常（%d）" % e.code)
-    except (urllib.error.URLError, OSError):
-        raise ApiError("無法連線，請確認網路")
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        # IncompleteRead (a dropped connection mid-body) is an HTTPException, not an OSError.
+        raise TransientError("無法連線，請確認網路")
+
+
+def read(url, attempts=3):
+    """Retries dropped connections and 5xx; a bad key or the rate limit fails at once."""
+    for attempt in range(attempts):
+        try:
+            return read_once(url)
+        except TransientError as e:
+            if attempt == attempts - 1:
+                raise ApiError(str(e))
+            time.sleep(5 * (attempt + 1))
 
 
 def datastore(key, dataset, params):
