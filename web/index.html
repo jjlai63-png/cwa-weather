@@ -52,6 +52,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outl
 .day span { position: sticky; left: calc(var(--label-w) + 4px); white-space: nowrap; padding-left: 4px; }
 .tide { flex: none; display: block; background: var(--card); height: 128px; }
 .tide text.range { font: 700 11px var(--sans); fill: #000; }
+.tide .moon-dark { fill: #3A4652; }
+.tide .moon-lit { fill: #FFE36E; }
 .day .lunar { display: block; font-size: 11px; font-weight: 400; line-height: 1.3; color: var(--muted); }
 .tide .area { fill: var(--rain); fill-opacity: .18; }
 .tide .curve { fill: none; stroke: var(--rain); stroke-width: 2; stroke-linejoin: round; }
@@ -240,7 +242,24 @@ function buildTimeline(periods, marks) {
 }
 
 const RANGE_FILL = { "大": "#FFC8B4", "中": "#FFEB9B", "小": "#DCE6EE" };
-const RANGE_BAND = 18;  // strip at the top of the tide row for each day's 大潮/中潮/小潮 and lunar date
+const RANGE_BAND = 18;  // strip at the top of the tide row for each day's 大潮/中潮/小潮 and moon
+
+/**
+ * SVG path of the lit part of the moon on a lunar day (1 = new moon, 15 = full).
+ * Seen from Taiwan the waxing moon is lit on the right, the waning moon on the left.
+ * The lit side is a half circle; the terminator is half an ellipse whose width follows cos(phase).
+ */
+function moonLitPath(lunarDay, cx, cy, r) {
+  const phase = ((lunarDay - 1) / 29.53) % 1;           // 0 new, 0.5 full
+  const k = Math.cos(2 * Math.PI * phase);               // 1 new, 0 quarter, -1 full
+  const rx = (r * Math.abs(k)).toFixed(2);
+  const waxing = phase <= 0.5;
+  const crescent = k > 0;
+  // Top to bottom along the lit side, then back up along the terminator.
+  const edge = waxing ? 1 : 0;
+  const terminator = waxing ? (crescent ? 0 : 1) : (crescent ? 1 : 0);
+  return `M${cx} ${cy - r}A${r} ${r} 0 0 ${edge} ${cx} ${cy + r}A${rx} ${r} 0 0 ${terminator} ${cx} ${cy - r}Z`;
+}
 
 /** "2026-09-27" (CWA LunarDate) to "九月廿七". */
 function lunarLabel(iso) {
@@ -283,10 +302,17 @@ function tideChart(timeline, marks, days, info, width, height) {
   const shown = marks.filter(m => xAt(m.sec) !== null);
   days.forEach((d, i) => {
     if (i) add("line", { class: "dayline", x1: d.x - 0.5, x2: d.x - 0.5, y1: 0, y2: height });
-    const [range] = info[d.key] ?? [];
+    const [range, lunarIso] = info[d.key] ?? [];
     if (!range) return;
     add("rect", { x: d.x + 3, y: 2, width: 34, height: RANGE_BAND - 3, rx: 3, fill: RANGE_FILL[range] ?? "#E4E8EC" });
     add("text", { class: "range", x: d.x + 20, y: RANGE_BAND - 5 }, range + "潮");
+    const lunarDay = Number((lunarIso || "").split("-")[2]);
+    // The moon needs 14px past the pill; a day cut to one narrow column skips it.
+    if (lunarDay && d.width >= 58) {
+      const cx = d.x + 48, cy = RANGE_BAND / 2 + 0.5, r = 6.5;
+      add("circle", { class: "moon-dark", cx, cy, r });
+      add("path", { class: "moon-lit", d: moonLitPath(lunarDay, cx, cy, r) });
+    }
   });
   if (!shown.length) return svg;
   const top = Math.max(...shown.map(m => m.cm));
