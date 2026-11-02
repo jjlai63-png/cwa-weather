@@ -52,7 +52,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outl
 .day span { position: sticky; left: calc(var(--label-w) + 4px); white-space: nowrap; padding-left: 4px; }
 .tide { flex: none; display: block; background: var(--card); height: 128px; }
 .tide text.range { font: 700 11px var(--sans); fill: #000; }
-.tide text.lunar { font: 11px var(--sans); fill: var(--muted); text-anchor: start; }
+.day .lunar { display: block; font-size: 11px; font-weight: 400; line-height: 1.3; color: var(--muted); }
 .tide .area { fill: var(--rain); fill-opacity: .18; }
 .tide .curve { fill: none; stroke: var(--rain); stroke-width: 2; stroke-linejoin: round; }
 .tide .dot { fill: var(--rain); }
@@ -283,18 +283,10 @@ function tideChart(timeline, marks, days, info, width, height) {
   const shown = marks.filter(m => xAt(m.sec) !== null);
   days.forEach((d, i) => {
     if (i) add("line", { class: "dayline", x1: d.x - 0.5, x2: d.x - 0.5, y1: 0, y2: height });
-    const [range, lunarIso] = info[d.key] ?? [];
-    let textX = d.x + 4;
-    if (range) {
-      add("rect", { x: d.x + 3, y: 2, width: 34, height: RANGE_BAND - 3, rx: 3, fill: RANGE_FILL[range] ?? "#E4E8EC" });
-      add("text", { class: "range", x: d.x + 20, y: RANGE_BAND - 5 }, range + "潮");
-      textX = d.x + 41;
-    }
-    const lunar = lunarLabel(lunarIso) && "農曆" + lunarLabel(lunarIso);
-    // Skip it on a day cut too short to hold it, rather than spill into the next day.
-    if (lunar && textX + lunar.length * 11 + 2 <= d.x + d.width) {
-      add("text", { class: "lunar", x: textX, y: RANGE_BAND - 5 }, lunar);
-    }
+    const [range] = info[d.key] ?? [];
+    if (!range) return;
+    add("rect", { x: d.x + 3, y: 2, width: 34, height: RANGE_BAND - 3, rx: 3, fill: RANGE_FILL[range] ?? "#E4E8EC" });
+    add("text", { class: "range", x: d.x + 20, y: RANGE_BAND - 5 }, range + "潮");
   });
   if (!shown.length) return svg;
   const top = Math.max(...shown.map(m => m.cm));
@@ -398,6 +390,14 @@ function renderPlace() {
     const el = cell("", { width, className: "day head" });
     const span = document.createElement("span");
     span.textContent = dayLabel(d.start);
+    const lunar = lunarLabel((entry.d ?? {})[d.key]?.[1]);
+    // Second line under the solar date; a day cut to one column has no room for it.
+    if (lunar && width >= 75) {
+      const small = document.createElement("small");
+      small.className = "lunar";
+      small.textContent = "農曆" + lunar;
+      span.append(small);
+    }
     el.append(span);
     return el;
   });
