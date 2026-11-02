@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Build web/data.json for the web page, which cannot call CWA itself (its host blocks fetch).
 
-Port of CwaClient.kt / Parsers.kt. The key comes from web/.cwa_key or $CWA_API_KEY and is
-never written to data.json; error text must never include a request URL, which carries it.
+The key comes from web/.cwa_key or $CWA_API_KEY and is never written to data.json;
+error text must never include a request URL, which carries it.
 
   python3 web/snapshot.py            all coastal towns, needs the key
-  python3 web/snapshot.py --sample   Keelung only, from the captured test fixtures
+  python3 web/snapshot.py --sample   Keelung only, from the API responses in web/fixtures/
 """
 import datetime
 import http.client
@@ -18,9 +18,8 @@ import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROJECT = os.path.dirname(HERE)
-TOWNS = os.path.join(PROJECT, "app/src/main/assets/coast_towns.tsv")
-FIXTURES = os.path.join(PROJECT, "app/src/test/resources")
+TOWNS = os.path.join(HERE, "coast_towns.tsv")
+FIXTURES = os.path.join(HERE, "fixtures")
 OUTPUT = os.path.join(HERE, "data.json")
 TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 TIDE_DAYS = 30

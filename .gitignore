@@ -1,8 +1,3 @@
-.gradle/
-build/
-app/build/
-local.properties
-*.apk
-app/src/main/java/tw/local/seaweather/ApiKey.kt
-.kotlin/
 web/.cwa_key
+web/data.json
+__pycache__/

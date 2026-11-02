@@ -8,7 +8,6 @@ on:
     branches: [main]
     paths:
       - "web/**"
-      - "app/src/main/assets/coast_towns.tsv"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
