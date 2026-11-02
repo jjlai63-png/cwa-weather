@@ -66,7 +66,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outl
 dialog { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 16px; width: min(420px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(10, 18, 24, .5); }
 dialog h2 { margin: 0 0 10px; font-size: 17px; }
-#search { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+/* 16px or more: iOS zooms the whole page in when a smaller input gets focus, and stays zoomed. */
+#search { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px 10px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 .options { display: flex; flex-direction: column; height: min(380px, 55vh); overflow-y: auto; margin-block: 8px; }
 .options button { flex: none; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 11px 6px; }
 .options button:hover { background: var(--bg); }
