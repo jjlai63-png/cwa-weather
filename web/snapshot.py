@@ -154,8 +154,11 @@ def parse_coast(body):
 
 
 def parse_tide(body):
-    marks = []
+    """High/low waters as [time, high, cm], and each day's [TideRange (大/中/小), LunarDate] by date."""
+    marks, days = [], {}
     for day in objects_with(root(body), "Date"):
+        if text(day, "TideRange") or text(day, "LunarDate"):
+            days[text(day, "Date")] = [text(day, "TideRange"), text(day, "LunarDate")]
         for event in objects_with(ci(day, "Time"), "DateTime"):
             heights = ci(event, "TideHeights")
             height = text(heights, "AboveLocalMSL") if isinstance(heights, dict) else ""
@@ -163,7 +166,7 @@ def parse_tide(body):
                 marks.append([text(event, "DateTime"), 1 if text(event, "Tide") == "滿潮" else 0, int(height)])
             except ValueError:
                 pass
-    return sorted(marks)
+    return sorted(marks), days
 
 
 def with_sea(periods, slots):
@@ -182,9 +185,11 @@ FIELDS = ("start", "end", "wx", "pop", "temp", "feels", "humidity", "windSpeed",
 
 
 def place_entry(periods, tide, slots, notes):
+    marks, days = tide
     return {
         "p": [[p[f] for f in FIELDS] for p in with_sea(periods, slots)],
-        "t": tide,
+        "t": marks,
+        "d": days,
         "sea": bool(slots),
         "notes": notes,
     }
@@ -288,7 +293,7 @@ def live():
         notes = [coast_note] if coast_note else []
         if town["tide"] in tide_errors:
             notes.append("潮汐載入失敗：%s" % tide_errors[town["tide"]])
-        places[town["label"]] = place_entry(periods, tides.get(town["tide"], []), points.get(town["point"], {}), notes)
+        places[town["label"]] = place_entry(periods, tides.get(town["tide"], ([], {})), points.get(town["point"], {}), notes)
     if len(forecast_errors) == len(forecasts) + len(forecast_errors):
         sys.exit("所有鄉鎮預報都失敗：%s" % next(iter(forecast_errors.values())))
     return places, errors

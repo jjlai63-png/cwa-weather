@@ -50,7 +50,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outl
 .label { position: sticky; left: 0; z-index: 2; flex: none; width: var(--label-w); height: auto; background: var(--head); color: var(--ink); font-family: var(--sans); font-weight: 700; font-size: 12px; }
 .day { height: 42px; justify-content: flex-start; font-family: var(--sans); font-weight: 700; }
 .day span { position: sticky; left: calc(var(--label-w) + 4px); white-space: nowrap; padding-left: 4px; }
-.tide { flex: none; display: block; background: var(--card); height: 112px; }
+.tide { flex: none; display: block; background: var(--card); height: 128px; }
+.tide text.range { font: 700 11px var(--sans); fill: #000; }
+.tide text.lunar { font: 11px var(--sans); fill: var(--muted); text-anchor: start; }
 .tide .area { fill: var(--rain); fill-opacity: .18; }
 .tide .curve { fill: none; stroke: var(--rain); stroke-width: 2; stroke-linejoin: round; }
 .tide .dot { fill: var(--rain); }
@@ -237,7 +239,25 @@ function buildTimeline(periods, marks) {
   return timeline;
 }
 
-function tideChart(timeline, marks, dayStarts, width, height) {
+const RANGE_FILL = { "大": "#FFC8B4", "中": "#FFEB9B", "小": "#DCE6EE" };
+const RANGE_BAND = 18;  // strip at the top of the tide row for each day's 大潮/中潮/小潮 and lunar date
+
+/** "2026-09-27" (CWA LunarDate) to "九月廿七". */
+function lunarLabel(iso) {
+  const [, m, d] = (iso || "").split("-").map(Number);
+  if (!m || !d) return "";
+  const digits = "一二三四五六七八九十";
+  const month = ["正", ...digits.slice(1), "十一", "十二"][m - 1] ?? "";
+  const day = d <= 10 ? "初" + digits[d - 1]
+    : d < 20 ? "十" + digits[d - 11]
+    : d === 20 ? "二十"
+    : d < 30 ? "廿" + digits[d - 21]
+    : "三十";
+  return month ? month + "月" + day : "";
+}
+
+/** days: [{x, width, key}] where each date starts; info: {"2026-11-02": ["大", "2026-09-12"]}. */
+function tideChart(timeline, marks, days, info, width, height) {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("class", "tide");
@@ -261,13 +281,28 @@ function tideChart(timeline, marks, dayStarts, width, height) {
     return i < 0 ? null : (i + (sec - timeline[i].start) / (timeline[i].end - timeline[i].start)) * COLUMN;
   };
   const shown = marks.filter(m => xAt(m.sec) !== null);
-  dayStarts.forEach(x => add("line", { class: "dayline", x1: x, x2: x, y1: 0, y2: height }));
+  days.forEach((d, i) => {
+    if (i) add("line", { class: "dayline", x1: d.x - 0.5, x2: d.x - 0.5, y1: 0, y2: height });
+    const [range, lunarIso] = info[d.key] ?? [];
+    let textX = d.x + 4;
+    if (range) {
+      add("rect", { x: d.x + 3, y: 2, width: 34, height: RANGE_BAND - 3, rx: 3, fill: RANGE_FILL[range] ?? "#E4E8EC" });
+      add("text", { class: "range", x: d.x + 20, y: RANGE_BAND - 5 }, range + "潮");
+      textX = d.x + 41;
+    }
+    const lunar = lunarLabel(lunarIso) && "農曆" + lunarLabel(lunarIso);
+    // Skip it on a day cut too short to hold it, rather than spill into the next day.
+    if (lunar && textX + lunar.length * 11 + 2 <= d.x + d.width) {
+      add("text", { class: "lunar", x: textX, y: RANGE_BAND - 5 }, lunar);
+    }
+  });
   if (!shown.length) return svg;
   const top = Math.max(...shown.map(m => m.cm));
   const bottom = Math.min(...shown.map(m => m.cm));
-  const gutter = 24;
-  const plot = height - 2 * gutter;
-  const yAt = cm => gutter + Math.max(-0.15, Math.min(1.15, (top - cm) / Math.max(1, top - bottom))) * plot;
+  // High-water labels sit 8px above the curve, so the top keeps room for them below the range strip.
+  const gutterTop = RANGE_BAND + 22, gutterBottom = 24;
+  const plot = height - gutterTop - gutterBottom;
+  const yAt = cm => gutterTop + Math.max(-0.15, Math.min(1.15, (top - cm) / Math.max(1, top - bottom))) * plot;
   const points = [];
   for (let x = 0; x <= width; x += 3) {
     const cm = tideHeightAt(marks, timeAt(x));
@@ -354,11 +389,11 @@ function renderPlace() {
     if (days.length && days[days.length - 1].key === key) days[days.length - 1].count++;
     else days.push({ key, count: 1, start: t.start });
   });
-  const dayStarts = [];
+  const dayBoxes = [];
   let left = 0;
-  const dayCells = days.map((d, i) => {
+  const dayCells = days.map(d => {
     const width = COLUMN * d.count - 1;
-    if (i) dayStarts.push(left - 0.5);
+    dayBoxes.push({ x: left, width, key: d.key });
     left += width + 1;
     const el = cell("", { width, className: "day head" });
     const span = document.createElement("span");
@@ -379,7 +414,7 @@ function renderPlace() {
   line("浪向", arrows("waveDir"));
   line("流速 m/s", heated("currentSpeed", SCALES.current));
   line("流向", plain("currentDir"));
-  line("潮汐 cm", [tideChart(timeline, marks, dayStarts, COLUMN * timeline.length - 1, 112)], true);
+  line("潮汐 cm", [tideChart(timeline, marks, dayBoxes, entry.d ?? {}, COLUMN * timeline.length - 1, 128)], true);
   line("氣溫 ℃", heated("temp", SCALES.temp));
   line("體感 ℃", heated("feels", SCALES.temp));
   line("降雨 %", heated("pop", SCALES.rain));
