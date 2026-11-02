@@ -41,7 +41,14 @@ jobs:
       - name: Collect site
         run: |
           mkdir _site
-          cp web/index.html web/data.json _site/
+          cp web/data.json _site/
+          # index.html has no document skeleton of its own, so GitHub Pages needs one added here.
+          {
+            printf '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">'
+            printf '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            printf '<style>body{margin:0;font-size:14px}img{max-width:100%%}[hidden]{display:none!important}</style>\n'
+            cat web/index.html
+          } > _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
