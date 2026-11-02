@@ -1,0 +1,454 @@
+<title>天氣海象</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: the Android app's one long table, a sticky label column beside a horizontally scrolling month of 3-hour slots. */
+:root {
+  --bg: #F2F6F9; --card: #FFFFFF; --ink: #17232C; --muted: #5A6B77; --line: #D9E3EA;
+  --wind: #1259A8; --temp: #C8500A; --rain: #0F7A6C; --wave: #5B3DB8; --warn-bg: #FFF3D6; --warn-ink: #6B4A00;
+  --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, var(--sans);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10181F; --card: #1C2730; --ink: #E8EEF2; --muted: #9FB0BC; --line: #2C3A45;
+  --wind: #6FB7FF; --temp: #FFA45C; --rain: #8FD3C8; --wave: #B9A2FF; --warn-bg: #3A3016; --warn-ink: #F5DC9A; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #10181F; --card: #1C2730; --ink: #E8EEF2; --muted: #9FB0BC; --line: #2C3A45;
+  --wind: #6FB7FF; --temp: #FFA45C; --rain: #8FD3C8; --wave: #B9A2FF; --warn-bg: #3A3016; --warn-ink: #F5DC9A; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
+.page { max-width: 1280px; margin: 0 auto; padding-block: 16px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+h1 { font-size: 24px; margin: 0; font-weight: 700; letter-spacing: .04em; }
+.stamp { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.controls { display: flex; gap: 8px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outline-offset: 1px; }
+.place { flex: 1; min-width: 0; text-align: left; padding: 10px 14px; font-size: 16px; font-weight: 500;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+.quiet { padding: 10px 14px; background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); white-space: nowrap; }
+.banner { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 14px; border-radius: 6px; font-size: 14px; line-height: 1.6; }
+.message { text-align: center; color: var(--muted); padding: 48px 0; font-size: 16px; }
+.scroll { overflow-x: auto; background: var(--line); border-radius: 6px; -webkit-overflow-scrolling: touch; }
+.table { width: max-content; display: flex; flex-direction: column; gap: 1px; }
+.row { display: flex; gap: 1px; }
+.cell { flex: none; width: var(--w); height: 34px; display: flex; align-items: center; justify-content: center;
+  background: var(--card); color: var(--ink); font-size: 13px; font-family: var(--mono); padding: 0; border: 0; border-radius: 0; }
+.cell.wide { font-family: var(--sans); }
+.cell.bold { font-weight: 600; }
+.label { position: sticky; left: 0; z-index: 2; flex: none; width: 66px; height: auto; font-family: var(--sans); font-weight: 700; font-size: 12px; box-shadow: 1px 0 0 var(--line); }
+.day { height: 42px; justify-content: flex-start; font-family: var(--sans); font-weight: 700; }
+.day span { position: sticky; left: 70px; white-space: nowrap; padding-left: 4px; }
+.tide { flex: none; display: block; background: var(--card); height: 112px; }
+.tide .area { fill: var(--rain); fill-opacity: .18; }
+.tide .curve { fill: none; stroke: var(--rain); stroke-width: 2; stroke-linejoin: round; }
+.tide .dot { fill: var(--rain); }
+.tide .dayline { stroke: var(--muted); stroke-width: 2; }
+.tide text { fill: var(--ink); font: 11px var(--mono); text-anchor: middle; }
+.notes { color: var(--muted); font-size: 13px; line-height: 1.7; max-width: 70ch; display: flex; flex-direction: column; gap: 4px; }
+.notes p { margin: 0; }
+dialog { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 16px; width: min(420px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(10, 18, 24, .5); }
+dialog h2 { margin: 0 0 10px; font-size: 17px; }
+#search { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.options { display: flex; flex-direction: column; height: min(380px, 55vh); overflow-y: auto; margin-block: 8px; }
+.options button { flex: none; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 11px 6px; }
+.options button:hover { background: var(--bg); }
+.empty { color: var(--muted); padding: 16px 6px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20;
+  background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 6px; font-size: 14px; }
+</style>
+
+<div class="page">
+  <header>
+    <h1>天氣海象</h1>
+    <span class="stamp" id="stamp"></span>
+  </header>
+  <div class="controls">
+    <button class="place" id="place" type="button">📍</button>
+    <button class="quiet" id="historyBtn" type="button">歷史</button>
+  </div>
+  <div class="banner" id="banner" hidden></div>
+  <div id="content"><div class="message">載入中…</div></div>
+</div>
+
+<dialog id="picker">
+  <h2 id="pickerTitle"></h2>
+  <input id="search" type="search" placeholder="搜尋" autocomplete="off">
+  <div class="options" id="pickerOptions"></div>
+  <div class="actions"><button class="quiet" id="pickerClose" type="button">取消</button></div>
+</dialog>
+<dialog id="history">
+  <h2>查詢歷史</h2>
+  <div class="options" id="historyOptions"></div>
+  <div class="actions">
+    <button class="quiet" id="historyClear" type="button">清除紀錄</button>
+    <button class="quiet" id="historyClose" type="button">取消</button>
+  </div>
+</dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// coast_towns.tsv as county -> [town, point]; dataset and tide ids live in snapshot.py only.
+const TOWNS = {"宜蘭縣":"蘇澳鎮 頭城鎮 壯圍鄉 五結鄉 南澳鄉","桃園市":"蘆竹區 大園區 新屋區 觀音區","新竹縣":"竹北市 新豐鄉","苗栗縣":"苑裡鎮 通霄鎮 竹南鎮 後龍鎮","彰化縣":"鹿港鎮 線西鄉 伸港鄉 福興鄉 芳苑鄉 大城鄉","雲林縣":"麥寮鄉 臺西鄉 四湖鄉 口湖鄉","嘉義縣":"布袋鎮 東石鄉","屏東縣":"東港鎮 恆春鎮 枋寮鄉 新園鄉 林邊鄉 佳冬鄉 琉球鄉_北方 琉球鄉_南方 車城鄉 滿州鄉 枋山鄉 牡丹鄉","臺東縣":"臺東市 成功鎮 卑南鄉 東河鄉 長濱鄉 太麻里鄉 大武鄉 綠島鄉_北方 綠島鄉_南方 達仁鄉 蘭嶼鄉_北方 蘭嶼鄉_南方","花蓮縣":"花蓮市 新城鄉 吉安鄉 壽豐鄉 豐濱鄉 秀林鄉","澎湖縣":"馬公市 湖西鄉 白沙鄉 西嶼鄉 望安鄉_北方 望安鄉_南方 七美鄉_北方 七美鄉_南方","基隆市":"中正區 中山區 安樂區","新竹市":"北區 香山區","高雄市":"鼓山區 左營區 楠梓區 前鎮區 旗津區 小港區 林園區 茄萣區 永安區 彌陀區 梓官區","新北市":"淡水區 瑞芳區 林口區 三芝區 石門區 八里區 貢寮區 金山區 萬里區","臺中市":"大甲區 清水區 梧棲區 大安區 龍井區","臺南市":"七股區 將軍區 北門區 南區 安南區 安平區","連江縣":"南竿鄉_北方 南竿鄉_南方 北竿鄉_北方 北竿鄉_南方 莒光鄉_北方 莒光鄉_南方 東引鄉_北方 東引鄉_南方","金門縣":"金城鎮 金沙鎮 金湖鎮 金寧鄉 烈嶼鄉 烏坵鄉_北方 烏坵鄉_南方"};
+const PLACES = Object.entries(TOWNS).flatMap(([county, list]) => list.split(" ").map(entry => {
+  const [name, side] = entry.split("_");
+  const place = side ? name + " " + side : name;
+  return { county, name, side, place, label: county + place };
+}));
+const DEFAULT_PLACE = "基隆市中正區";
+const HISTORY_LIMIT = 20;
+const COLUMN = 47;      // 46px cell + 1px gap
+const THREE_HOURS = 3 * 3600;
+const STALE_HOURS = 6;
+const $ = id => document.getElementById(id);
+
+const store = {
+  get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+  remove(key) { try { localStorage.removeItem(key); } catch {} },
+};
+
+let data = null;
+let current = store.get("coast", DEFAULT_PLACE);
+if (!PLACES.some(p => p.label === current)) current = DEFAULT_PLACE;
+let toastTimer = 0;
+
+const epoch = iso => Date.parse(iso) / 1000;
+/** Taipei wall clock whatever the viewer's timezone is. */
+const taipei = sec => new Date((sec + 8 * 3600) * 1000);
+const pad = n => String(n).padStart(2, "0");
+const dayKey = sec => taipei(sec).toISOString().slice(0, 10);
+const hourOf = sec => pad(taipei(sec).getUTCHours());
+const clock = sec => taipei(sec).toISOString().slice(11, 16);
+function dayLabel(sec) {
+  const d = taipei(sec);
+  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} 週${"日一二三四五六"[d.getUTCDay()]}`;
+}
+const stampText = sec => `${dayKey(sec).slice(5).replace("-", "/")} ${clock(sec)}`;
+
+function showToast(text) {
+  const el = $("toast");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2000);
+}
+
+const WIND_ARROWS = { "偏北風": "↓", "東北風": "↙", "偏東風": "←", "東南風": "↖", "偏南風": "↑", "西南風": "↗", "偏西風": "→", "西北風": "↘" };
+const windArrow = dir => dir === "" ? "" : WIND_ARROWS[dir] ?? "·";
+function weatherIcon(wx) {
+  if (wx.includes("雷")) return "⛈";
+  if (wx.includes("雪")) return "🌨";
+  if (wx.includes("雨")) return "🌧";
+  if (wx.includes("陰")) return "☁";
+  if (wx.includes("雲")) return "⛅";
+  if (wx.includes("晴")) return "☀";
+  return wx ? "·" : "";
+}
+
+function token(name) {
+  const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim().slice(1);
+  return [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+}
+function heat(hue, card, level) {
+  const t = Math.min(1, Math.max(0, level)) * 0.92;
+  return card.map((c, i) => Math.round(c * (1 - t) + hue[i] * t));
+}
+const inkOn = ([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#17232C" : "#FFFFFF";
+
+/** Half a cosine between consecutive high and low waters, which gives the tide its sine shape. */
+function tideHeightAt(marks, sec) {
+  const next = marks.findIndex(m => m.sec >= sec);
+  if (next < 0) return null;
+  if (marks[next].sec === sec) return marks[next].cm;
+  if (next === 0) return null;
+  const a = marks[next - 1], b = marks[next];
+  const progress = (sec - a.sec) / (b.sec - a.sec);
+  return a.cm + (b.cm - a.cm) * (1 - Math.cos(Math.PI * progress)) / 2;
+}
+
+/** Forecasts stop after a few days but tide runs for a month, so slots continue to the last tide. */
+function buildTimeline(periods, marks) {
+  const timeline = periods.map(p => ({ start: p.s, end: p.e }));
+  if (!marks.length) return timeline;
+  let start = periods[periods.length - 1].e;
+  const limit = marks[marks.length - 1].sec;
+  while (start <= limit) {
+    timeline.push({ start, end: start + THREE_HOURS });
+    start += THREE_HOURS;
+  }
+  return timeline;
+}
+
+function tideChart(timeline, marks, dayStarts, width, height) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "tide");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "潮汐曲線");
+  const add = (tag, attrs, text) => {
+    const el = document.createElementNS(NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    if (text) el.textContent = text;
+    svg.appendChild(el);
+  };
+  const timeAt = x => {
+    const i = Math.max(0, Math.min(timeline.length - 1, Math.floor(x / COLUMN)));
+    return timeline[i].start + (x / COLUMN - i) * (timeline[i].end - timeline[i].start);
+  };
+  const xAt = sec => {
+    const i = timeline.findIndex(t => sec >= t.start && sec < t.end);
+    return i < 0 ? null : (i + (sec - timeline[i].start) / (timeline[i].end - timeline[i].start)) * COLUMN;
+  };
+  const shown = marks.filter(m => xAt(m.sec) !== null);
+  dayStarts.forEach(x => add("line", { class: "dayline", x1: x, x2: x, y1: 0, y2: height }));
+  if (!shown.length) return svg;
+  const top = Math.max(...shown.map(m => m.cm));
+  const bottom = Math.min(...shown.map(m => m.cm));
+  const gutter = 24;
+  const plot = height - 2 * gutter;
+  const yAt = cm => gutter + Math.max(-0.15, Math.min(1.15, (top - cm) / Math.max(1, top - bottom))) * plot;
+  const points = [];
+  for (let x = 0; x <= width; x += 3) {
+    const cm = tideHeightAt(marks, timeAt(x));
+    if (cm !== null) points.push(`${x} ${yAt(cm).toFixed(1)}`);
+  }
+  if (points.length) {
+    const firstX = points[0].split(" ")[0];
+    const lastX = points[points.length - 1].split(" ")[0];
+    add("path", { class: "area", d: `M${points.join("L")}L${lastX} ${height}L${firstX} ${height}Z` });
+    add("path", { class: "curve", d: `M${points.join("L")}` });
+  }
+  shown.forEach(m => {
+    const px = xAt(m.sec), py = yAt(m.cm);
+    add("circle", { class: "dot", cx: px.toFixed(1), cy: py.toFixed(1), r: 3.5 });
+    const label = `${clock(m.sec)} ${m.cm}`;
+    const half = label.length * 3.4;
+    add("text", { x: Math.max(half, Math.min(width - half, px)).toFixed(1), y: (m.high ? py - 8 : py + 17).toFixed(1) }, label);
+  });
+  return svg;
+}
+
+function cell(text, opts = {}) {
+  const el = document.createElement(opts.onClick ? "button" : "div");
+  if (opts.onClick) { el.type = "button"; el.addEventListener("click", opts.onClick); }
+  el.className = "cell" + (opts.bold ? " bold" : "") + (opts.className ? " " + opts.className : "");
+  el.style.setProperty("--w", (opts.width ?? 46) + "px");
+  el.textContent = text;
+  if (opts.fill) {
+    el.style.background = `rgb(${opts.fill.join(",")})`;
+    el.style.color = inkOn(opts.fill);
+  }
+  return el;
+}
+
+function message(text) {
+  const el = document.createElement("div");
+  el.className = "message";
+  el.textContent = text;
+  $("content").replaceChildren(el);
+}
+
+function renderPlace() {
+  const town = PLACES.find(p => p.label === current);
+  $("place").textContent = "📍 " + town.label;
+  if (!data) return;
+  const entry = data.places[current];
+  if (!entry) return message(data.sample ? "範例資料只有基隆市中正區" : "這份資料沒有此地點");
+  if (entry.error) return message(entry.error);
+
+  const now = Date.now() / 1000;
+  const periods = entry.p.map(row => {
+    const p = Object.fromEntries(data.fields.map((f, i) => [f, row[i]]));
+    p.s = epoch(p.start);
+    p.e = epoch(p.end);
+    return p;
+  }).filter(p => p.e > now);
+  if (!periods.length) return message("這份資料的預報已全部過期，需要重新抓取");
+  const marks = entry.t.map(([iso, high, cm]) => ({ sec: epoch(iso), high: !!high, cm })).sort((a, b) => a.sec - b.sec);
+  const timeline = buildTimeline(periods, marks);
+
+  const card = token("--card"), wind = token("--wind"), temp = token("--temp"), rain = token("--rain"), wave = token("--wave");
+  const table = document.createElement("div");
+  table.className = "table";
+  const blank = COLUMN * (timeline.length - periods.length) - 1;
+  const line = (name, cells, whole = false) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(cell(name, { className: "label", width: 66 }), ...cells);
+    if (!whole && blank > 0) row.append(cell("", { width: blank }));
+    table.append(row);
+  };
+  const number = v => v === "" || isNaN(v) ? null : Number(v);
+  const heated = (field, hue, scale, base = 0, bold = false, shown = v => v) => periods.map(p => {
+    const level = ((number(p[field]) ?? base) - base) / scale;
+    return cell(shown(p[field]), { fill: heat(hue, card, level), bold });
+  });
+  const plain = field => periods.map(p => cell(p[field], { className: "wide" }));
+
+  const days = [];
+  timeline.forEach(t => {
+    const key = dayKey(t.start);
+    if (days.length && days[days.length - 1].key === key) days[days.length - 1].count++;
+    else days.push({ key, count: 1, start: t.start });
+  });
+  const dayStarts = [];
+  let left = 0;
+  const dayCells = days.map((d, i) => {
+    const width = COLUMN * d.count - 1;
+    if (i) dayStarts.push(left - 0.5);
+    left += width + 1;
+    const el = cell("", { width, className: "day" });
+    const span = document.createElement("span");
+    span.textContent = dayLabel(d.start);
+    el.append(span);
+    return el;
+  });
+  line("日期", dayCells, true);
+  line("時間", timeline.map(t => cell(hourOf(t.start))), true);
+  line("天氣", periods.map(p => cell(weatherIcon(p.wx), { onClick: () => showToast(p.wx || "無資料") })));
+  line("風速 m/s", heated("windSpeed", wind, 17, 0, true));
+  line("風級", heated("beaufort", wind, 8, 0, false, v => v.replace("<=", "≤").replace(/ /g, "")));
+  line("風向", periods.map(p => cell(windArrow(p.windDir), { onClick: () => showToast(p.windDir || "無資料") })));
+  line("浪高 m", heated("wave", wave, 6, 0, true));
+  line("浪週期 s", plain("wavePeriod"));
+  line("浪向", plain("waveDir"));
+  line("流速 m/s", heated("currentSpeed", wave, 1.5));
+  line("流向", plain("currentDir"));
+  line("潮汐 cm", [tideChart(timeline, marks, dayStarts, COLUMN * timeline.length - 1, 112)], true);
+  line("氣溫 ℃", heated("temp", temp, 25, 10));
+  line("體感 ℃", heated("feels", temp, 25, 10));
+  line("降雨 %", heated("pop", rain, 100));
+  line("濕度 %", plain("humidity"));
+
+  const scroll = document.createElement("div");
+  scroll.className = "scroll";
+  scroll.tabIndex = 0;
+  scroll.setAttribute("aria-label", "預報表，可左右捲動");
+  scroll.append(table);
+
+  const notes = document.createElement("div");
+  notes.className = "notes";
+  const point = town.side ? `${town.name} ${town.side}沿海` : (town.label === "高雄市前鎮區" ? "旗津區沿海" : `${town.name}沿海`);
+  [
+    ...entry.notes,
+    "顏色越深數值越大；箭頭為風吹去的方向，點天氣或風向可看文字。",
+    entry.sea ? `風、浪、海流：${point}預報（海上）。` : `風：${town.label}鄉鎮預報（陸地，非海上）；沿海預報暫時無資料。`,
+    `天氣、氣溫、降雨、濕度：${town.name}鄉鎮預報（陸地）。預報只有未來幾天，之後留白；潮汐可往右捲到 30 天。`,
+    `潮汐：${town.county}${town.name}，波峰為滿潮、波谷為乾潮，標示時間與潮高；峰谷之間為平滑推算。`,
+    "資料來源：中央氣象署",
+  ].forEach(text => {
+    const p = document.createElement("p");
+    p.textContent = text;
+    notes.append(p);
+  });
+  const previous = $("content").querySelector(".scroll")?.scrollLeft ?? 0;
+  $("content").replaceChildren(scroll, Object.assign(document.createElement("div"), { style: "height:12px" }), notes);
+  scroll.scrollLeft = previous;
+}
+
+const visited = () => store.get("history", "").split("\n").filter(Boolean);
+function select(label) {
+  current = label;
+  store.set("coast", label);
+  store.set("history", [label, ...visited().filter(p => p !== label)].slice(0, HISTORY_LIMIT).join("\n"));
+  renderPlace();
+}
+
+let pickerOptions = [];
+let pickerPick = null;
+function renderOptions() {
+  const q = $("search").value.trim().replace(/台/g, "臺");
+  const box = $("pickerOptions");
+  const shown = pickerOptions.filter(o => o.text.replace(/台/g, "臺").includes(q));
+  box.replaceChildren(...shown.map(o => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = o.text;
+    b.addEventListener("click", () => pickerPick(o.value));
+    return b;
+  }));
+  if (!shown.length) {
+    const none = document.createElement("div");
+    none.className = "empty";
+    none.textContent = "找不到符合的地點";
+    box.append(none);
+  }
+}
+function choose(title, options, onPick) {
+  $("pickerTitle").textContent = title;
+  $("search").value = "";
+  pickerOptions = options;
+  pickerPick = onPick;
+  renderOptions();
+  if (!$("picker").open) $("picker").showModal();
+  $("search").focus();
+}
+function openPicker() {
+  const counties = [...new Set(PLACES.map(p => p.county))];
+  choose("選擇縣市", counties.map(c => ({ text: c, value: c })), county => {
+    const options = PLACES.filter(p => p.county === county).map(p => ({ text: p.place, value: p.label }));
+    choose(`選擇 ${county} 的沿海鄉鎮`, options, label => {
+      $("picker").close();
+      select(label);
+    });
+  });
+}
+function openHistory() {
+  const places = visited().filter(h => PLACES.some(p => p.label === h));
+  if (!places.length) return showToast("還沒有查詢紀錄");
+  $("historyOptions").replaceChildren(...places.map(label => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", () => { $("history").close(); select(label); });
+    return b;
+  }));
+  $("history").showModal();
+}
+
+$("place").addEventListener("click", openPicker);
+$("historyBtn").addEventListener("click", openHistory);
+$("search").addEventListener("input", renderOptions);
+$("pickerClose").addEventListener("click", () => $("picker").close());
+$("historyClose").addEventListener("click", () => $("history").close());
+$("historyClear").addEventListener("click", () => {
+  store.remove("history");
+  $("history").close();
+  showToast("已清除");
+});
+
+// Heat colors are computed from the theme tokens, so a theme change redraws them.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderPlace);
+new MutationObserver(renderPlace).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+renderPlace();
+fetch("data.json").then(r => {
+  if (!r.ok) throw new Error();
+  return r.json();
+}).then(json => {
+  data = json;
+  const generated = epoch(data.generated);
+  $("stamp").textContent = `資料時間 ${stampText(generated)}（臺灣時間）`;
+  const hours = Math.floor((Date.now() / 1000 - generated) / 3600);
+  const banner = $("banner");
+  if (data.sample) {
+    banner.textContent = `範例資料：這是 11/01 擷取的測試資料，只有基隆市中正區，鄉鎮預報實際取自臺北市中正區，海上預報也只有幾個時段，不可作為出海依據。`;
+    banner.hidden = false;
+  } else if (hours >= STALE_HOURS) {
+    banner.textContent = `這份預報是 ${hours} 小時前抓取的，出海前請到中央氣象署確認最新預報。`;
+    banner.hidden = false;
+  }
+  if (data.sample) current = DEFAULT_PLACE;
+  renderPlace();
+}).catch(() => message("資料載入失敗，請重新整理頁面"));
+</script>
