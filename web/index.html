@@ -1,5 +1,8 @@
 <title>釣魚天氣查詢</title>
 <meta name="author" content="Jason.JJ.Lai">
+<meta name="apple-mobile-web-app-title" content="釣魚天氣">
+<meta name="theme-color" content="#F2F6F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10181F" media="(prefers-color-scheme: dark)">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -10,6 +13,8 @@
   --wind: #1259A8; --temp: #C8500A; --rain: #0F7A6C; --wave: #5B3DB8; --warn-bg: #FFF3D6; --warn-ink: #6B4A00;
   --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, var(--sans);
+  --label-w: 66px;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px)); --gutter-r: max(16px, env(safe-area-inset-right, 0px));
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #10181F; --card: #1C2730; --ink: #E8EEF2; --muted: #9FB0BC; --line: #2C3A45;
@@ -21,29 +26,34 @@
 }
 body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
 .page { max-width: 1280px; margin: 0 auto; padding-block: 16px 32px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-left: var(--gutter-l); padding-right: var(--gutter-r);
   display: flex; flex-direction: column; gap: 12px; }
 header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
 h1 { font-size: 24px; margin: 0; font-weight: 700; letter-spacing: .04em; }
 .stamp { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .controls { display: flex; gap: 8px; }
-button { font: inherit; color: inherit; cursor: pointer; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--wind); outline-offset: 1px; }
 .place { flex: 1; min-width: 0; text-align: left; padding: 10px 14px; font-size: 16px; font-weight: 500;
   background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
 .quiet { padding: 10px 14px; background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); white-space: nowrap; }
 .banner { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 14px; border-radius: 6px; font-size: 14px; line-height: 1.6; }
 .message { text-align: center; color: var(--muted); padding: 48px 0; font-size: 16px; }
-.scroll { overflow-x: auto; background: var(--line); border-radius: 6px; -webkit-overflow-scrolling: touch; }
+/* Scrolls both ways inside one screen, so the date and hour rows stay on top while reading lower rows. */
+.scroll { overflow: auto; max-height: max(380px, calc(100vh - 150px)); max-height: max(380px, calc(100dvh - 150px));
+  background: var(--line); border-radius: 6px; -webkit-overflow-scrolling: touch; }
 .table { width: max-content; display: flex; flex-direction: column; gap: 1px; }
 .row { display: flex; gap: 1px; }
+.row.sticky-day, .row.sticky-time { position: sticky; z-index: 3; background: var(--line); }
+.row.sticky-day { top: 0; }
+.row.sticky-time { top: 43px; }
 .cell { flex: none; width: var(--w); height: 34px; display: flex; align-items: center; justify-content: center;
   background: var(--card); color: var(--ink); font-size: 13px; font-family: var(--mono); padding: 0; border: 0; border-radius: 0; }
 .cell.wide { font-family: var(--sans); }
 .cell.bold { font-weight: 600; }
-.label { position: sticky; left: 0; z-index: 2; flex: none; width: 66px; height: auto; font-family: var(--sans); font-weight: 700; font-size: 12px; box-shadow: 1px 0 0 var(--line); }
+.label { position: sticky; left: 0; z-index: 2; flex: none; width: var(--label-w); height: auto; font-family: var(--sans); font-weight: 700; font-size: 12px; box-shadow: 1px 0 0 var(--line); }
 .day { height: 42px; justify-content: flex-start; font-family: var(--sans); font-weight: 700; }
-.day span { position: sticky; left: 70px; white-space: nowrap; padding-left: 4px; }
+.day span { position: sticky; left: calc(var(--label-w) + 4px); white-space: nowrap; padding-left: 4px; }
 .tide { flex: none; display: block; background: var(--card); height: 112px; }
 .tide .area { fill: var(--rain); fill-opacity: .18; }
 .tide .curve { fill: none; stroke: var(--rain); stroke-width: 2; stroke-linejoin: round; }
@@ -62,6 +72,19 @@ dialog h2 { margin: 0 0 10px; font-size: 17px; }
 .options button:hover { background: var(--bg); }
 .empty { color: var(--muted); padding: 16px 6px; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 600px) {
+  :root { --label-w: 54px; }
+  .page { padding-block: 12px 24px; gap: 10px; }
+  h1 { font-size: 20px; }
+  .stamp { font-size: 12px; }
+  .label { font-size: 11px; line-height: 1.25; text-align: center; padding-inline: 2px; }
+  /* Edge to edge on a phone: the gutter is worth almost a whole column here. */
+  .scroll { margin-left: calc(-1 * var(--gutter-l)); margin-right: calc(-1 * var(--gutter-r)); border-radius: 0; }
+  dialog { margin: auto 0 0; width: 100%; max-width: 100%; box-sizing: border-box; border-radius: 12px 12px 0 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .options { height: 60vh; }
+  .options button { padding-block: 13px; }
+}
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20;
   background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 6px; font-size: 14px; }
 </style>
@@ -106,7 +129,10 @@ const PLACES = Object.entries(TOWNS).flatMap(([county, list]) => list.split(" ")
 }));
 const DEFAULT_PLACE = "基隆市中正區";
 const HISTORY_LIMIT = 20;
-const COLUMN = 47;      // 46px cell + 1px gap
+// Phones get narrower cells so about seven 3-hour slots fit on screen.
+const NARROW = matchMedia("(max-width: 600px)");
+const cellWidth = () => NARROW.matches ? 40 : 46;
+let COLUMN = 47;        // cell + 1px gap, set per render
 const THREE_HOURS = 3 * 3600;
 const STALE_HOURS = 6;
 const $ = id => document.getElementById(id);
@@ -245,7 +271,7 @@ function cell(text, opts = {}) {
   const el = document.createElement(opts.onClick ? "button" : "div");
   if (opts.onClick) { el.type = "button"; el.addEventListener("click", opts.onClick); }
   el.className = "cell" + (opts.bold ? " bold" : "") + (opts.className ? " " + opts.className : "");
-  el.style.setProperty("--w", (opts.width ?? 46) + "px");
+  el.style.setProperty("--w", (opts.width ?? cellWidth()) + "px");
   el.textContent = text;
   if (opts.fill) {
     el.style.background = `rgb(${opts.fill.join(",")})`;
@@ -269,6 +295,7 @@ function renderPlace() {
   if (!entry) return message(data.sample ? "範例資料只有基隆市中正區" : "這份資料沒有此地點");
   if (entry.error) return message(entry.error);
 
+  COLUMN = cellWidth() + 1;
   const now = Date.now() / 1000;
   const periods = entry.p.map(row => {
     const p = Object.fromEntries(data.fields.map((f, i) => [f, row[i]]));
@@ -287,7 +314,7 @@ function renderPlace() {
   const line = (name, cells, whole = false) => {
     const row = document.createElement("div");
     row.className = "row";
-    row.append(cell(name, { className: "label", width: 66 }), ...cells);
+    row.append(cell(name, { className: "label" }), ...cells);
     if (!whole && blank > 0) row.append(cell("", { width: blank }));
     table.append(row);
   };
@@ -318,6 +345,8 @@ function renderPlace() {
   });
   line("日期", dayCells, true);
   line("時間", timeline.map(t => cell(hourOf(t.start))), true);
+  table.children[0].classList.add("sticky-day");
+  table.children[1].classList.add("sticky-time");
   line("天氣", periods.map(p => cell(weatherIcon(p.wx), { onClick: () => showToast(p.wx || "無資料") })));
   line("風速 m/s", heated("windSpeed", wind, 17, 0, true));
   line("風級", heated("beaufort", wind, 8, 0, false, v => v.replace("<=", "≤").replace(/ /g, "")));
@@ -394,7 +423,8 @@ function choose(title, options, onPick) {
   pickerPick = onPick;
   renderOptions();
   if (!$("picker").open) $("picker").showModal();
-  $("search").focus();
+  // On a phone the keyboard would cover most of a short list, so only focus with a mouse.
+  if (!matchMedia("(pointer: coarse)").matches) $("search").focus();
 }
 function openPicker() {
   const counties = [...new Set(PLACES.map(p => p.county))];
@@ -432,6 +462,7 @@ $("historyClear").addEventListener("click", () => {
 
 // Heat colors are computed from the theme tokens, so a theme change redraws them.
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderPlace);
+NARROW.addEventListener("change", renderPlace);
 new MutationObserver(renderPlace).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 renderPlace();
