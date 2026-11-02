@@ -173,14 +173,34 @@ function showToast(text) {
 // Arrows point where the wind or swell is going: 東北風 and a 東北 wave both come from the northeast.
 const ARROWS = { "北": "↓", "東北": "↙", "東": "←", "東南": "↖", "南": "↑", "西南": "↗", "西": "→", "西北": "↘" };
 const windArrow = dir => dir === "" ? "" : ARROWS[dir.replace(/風$/, "").replace(/^偏/, "")] ?? "·";
+/**
+ * Color weather icons drawn here, so every phone shows the same colors
+ * (emoji ☀ ☁ render black-and-white on some systems).
+ */
+const SUN_RAYS = [0, 45, 90, 135, 180, 225, 270, 315]
+  .map(a => `<line x1="12" y1="2.5" x2="12" y2="5" transform="rotate(${a} 12 12)"/>`).join("");
+const cloud = (fill, dy = 0) =>
+  `<g fill="${fill}" transform="translate(0 ${dy})"><circle cx="8.5" cy="14" r="4"/><circle cx="13.5" cy="11.5" r="5"/>` +
+  `<circle cx="18" cy="14.5" r="3.5"/><rect x="5" y="14" width="16.5" height="4" rx="2"/></g>`;
+const svgIcon = body => `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${body}</svg>`;
+const WEATHER_ICONS = {
+  sun: svgIcon(`<g stroke="#FF9800" stroke-width="2" stroke-linecap="round">${SUN_RAYS}</g><circle cx="12" cy="12" r="5" fill="#FFC107"/>`),
+  partly: svgIcon(`<g transform="translate(-3.5 -3.5) scale(.8)"><g stroke="#FF9800" stroke-width="2.4" stroke-linecap="round">${SUN_RAYS}</g>` +
+    `<circle cx="12" cy="12" r="5" fill="#FFC107"/></g>${cloud("#B0BEC5", 2)}`),
+  cloudy: svgIcon(`${cloud("#CFD8DC", -3)}${cloud("#90A4AE", 1)}`),
+  rain: svgIcon(`${cloud("#90A4AE", -4)}<g stroke="#1E88E5" stroke-width="2" stroke-linecap="round">` +
+    `<line x1="8" y1="17.5" x2="6.5" y2="21"/><line x1="12.5" y1="17.5" x2="11" y2="21"/><line x1="17" y1="17.5" x2="15.5" y2="21"/></g>`),
+  thunder: svgIcon(`${cloud("#607D8B", -4)}<path d="M13 13.5l-4 5.5h3l-1.5 4.5 5-6.5h-3l1.5-3.5z" fill="#FFC107"/>`),
+  snow: svgIcon(`${cloud("#90A4AE", -4)}<g fill="#64B5F6"><circle cx="8" cy="19" r="1.4"/><circle cx="12.5" cy="21" r="1.4"/><circle cx="17" cy="19" r="1.4"/></g>`),
+};
 function weatherIcon(wx) {
-  if (wx.includes("雷")) return "⛈";
-  if (wx.includes("雪")) return "🌨";
-  if (wx.includes("雨")) return "🌧";
-  if (wx.includes("陰")) return "☁";
-  if (wx.includes("雲")) return "⛅";
-  if (wx.includes("晴")) return "☀";
-  return wx ? "·" : "";
+  if (wx.includes("雷")) return WEATHER_ICONS.thunder;
+  if (wx.includes("雪")) return WEATHER_ICONS.snow;
+  if (wx.includes("雨")) return WEATHER_ICONS.rain;
+  if (wx.includes("陰")) return WEATHER_ICONS.cloudy;
+  if (wx.includes("雲")) return WEATHER_ICONS.partly;
+  if (wx.includes("晴")) return WEATHER_ICONS.sun;
+  return "";
 }
 
 /**
@@ -431,7 +451,13 @@ function renderPlace() {
   line("時間", timeline.map(t => cell(hourOf(t.start), { className: "head" })), true);
   table.children[0].classList.add("sticky-day");
   table.children[1].classList.add("sticky-time");
-  line("天氣", periods.map(p => cell(weatherIcon(p.wx), { onClick: () => showToast(p.wx || "無資料") })));
+  line("天氣", periods.map(p => {
+    const el = cell(p.wx && !weatherIcon(p.wx) ? "·" : "", { onClick: () => showToast(p.wx || "無資料") });
+    el.setAttribute("aria-label", p.wx || "無資料");
+    // Built from the fixed strings above, never from data, so innerHTML is safe here.
+    if (weatherIcon(p.wx)) el.innerHTML = weatherIcon(p.wx);
+    return el;
+  }));
   line("風速 m/s", heated("windSpeed", SCALES.wind, true));
   line("風級", heated("beaufort", SCALES.wind, false, v => v.replace("<=", "≤").replace(/ /g, ""), beaufortSpeed));
   line("風向", arrows("windDir"));
