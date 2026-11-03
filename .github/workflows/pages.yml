@@ -1,9 +1,12 @@
-# Refresh data.json every 3 hours and publish the web page
+# Refresh data.json about every 3 hours and publish the web page.
+# GitHub drops many scheduled runs under load (only 1 of 5 fired on 2026-11-02), so the
+# schedule fires hourly and a run skips when the live data is still under 150 minutes old.
+# That keeps CWA requests near one fetch per 3 hours while a dropped run costs at most an hour.
 name: Deploy web page
 
 on:
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "41 * * * *"
   push:
     branches: [main]
     paths:
@@ -28,16 +31,35 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check data age
+        id: age
+        if: github.event_name == 'schedule'
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import datetime, json, urllib.request
+          try:
+              with urllib.request.urlopen("https://jjlai63-png.github.io/cwa-weather/data.json", timeout=30) as r:
+                  generated = datetime.datetime.fromisoformat(json.load(r)["generated"])
+              age = datetime.datetime.now(datetime.timezone.utc) - generated
+              print("skip=" + ("true" if age < datetime.timedelta(minutes=150) else "false"))
+          except Exception:
+              print("skip=false")  # cannot tell, so refresh
+          PY
+          cat "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.age.outputs.skip != 'true'
       - uses: actions/setup-python@v5
+        if: steps.age.outputs.skip != 'true'
         with:
           python-version: "3.12"
       - name: Fetch forecast
+        if: steps.age.outputs.skip != 'true'
         env:
           CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
         run: python3 web/snapshot.py
       # Only these two files are published, so the script and anything else in web/ stay out of the site.
       - name: Collect site
+        if: steps.age.outputs.skip != 'true'
         run: |
           mkdir _site
           cp web/data.json _site/
@@ -49,8 +71,11 @@ jobs:
             cat web/index.html
           } > _site/index.html
       - uses: actions/configure-pages@v5
+        if: steps.age.outputs.skip != 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.age.outputs.skip != 'true'
         with:
           path: _site
       - id: deployment
+        if: steps.age.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
