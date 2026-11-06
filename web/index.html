@@ -165,7 +165,7 @@ function dayLabel(sec) {
   const d = taipei(sec);
   return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} 週${"日一二三四五六"[d.getUTCDay()]}`;
 }
-const stampText = sec => `${dayKey(sec).slice(5).replace("-", "/")} ${clock(sec)}`;
+const stampText = sec => `${dayLabel(sec)} ${clock(sec)}`;
 
 function showToast(text) {
   const el = $("toast");
